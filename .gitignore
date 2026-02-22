@@ -1,0 +1,25 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Python overrides
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# VSCode/IDE
+.idea/
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
