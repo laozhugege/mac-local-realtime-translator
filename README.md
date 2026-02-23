@@ -1,163 +1,226 @@
-# MacOS Local Realtime Video Translator / MacOS 本地实时视频翻译器
+# 🎬 Realtime Subtitle Translator | 实时字幕翻译器
 
-[English](#english) | [中文](#中文)
+A fully **offline**, **real-time** English-to-Chinese subtitle translator for macOS. Captures system audio, transcribes speech using Whisper, and translates to Chinese via a local Ollama LLM — all running locally on your Mac with zero cloud dependency.
 
----
+一款完全**离线**的 macOS **实时**英语转中文字幕翻译器。通过捕获系统音频，利用 Whisper 进行语音识别，再由本地 Ollama 大语言模型翻译成中文 —— 全程在本地运行，无需云端服务。
 
-<a id="english"></a>
-## 🇬🇧 English
-
-A lightning-fast, fully offline, realtime bilingual (English to Chinese) subtitle translation system designed specifically for macOS.
-
-This tool intercepts your system's audio playback using a virtual audio cable, detects speech endpoints via Voice Activity Detection (VAD), transcribes the English audio using `faster-whisper`, and translates it with ultra-low latency using a local Ollama LLM (`qwen2.5:3b`). The result is rendered natively as an un-clickable, transparent PyQt6 overlay that never steals your window focus.
-
-### 🌟 Features
-- **True Offline Processing**: No API keys, no monthly fees, 100% privacy-preserving.
-- **Ultra-low Latency**: End-to-end sync in less than ~1.0 second.
-- **Ghost Subtitle UI**: The bilingual Qt overlay acts as a proper system-wide HUD. Full mouse-click passthrough means you can use your browser and click on videos seamlessly without hitting the subtitle window.
-- **Smart Chunking**: Aggressive VAD (150ms pauses) combined with a 3.0s forced cut prevents long-sentence backlog.
-
-### 🛠 Prerequisites
-
-#### 1. Hardware & OS
-- **Platform**: macOS (Tested on Apple Silicon M-series, e.g., M4 Max)
-- **Memory**: Minimum 16GB Unified Memory recommended.
-
-#### 2. Audio Capture Configuration (CRITICAL)
-This app needs to "hear" what your Mac is playing. You **must** install a virtual audio driver like BlackHole.
-
-1. Install BlackHole via Homebrew:
-   ```bash
-   brew install blackhole-2ch
-   ```
-2. Configure a Multi-Output Device:
-   - Open macOS **Audio MIDI Setup**.
-   - Click the `+` at the bottom left -> **Create Multi-Output Device**.
-   - Check both your **MacBook Speakers** and **BlackHole 2ch**.
-   - ⚠️ **Important**: Check the **Drift Correction** box for BlackHole to prevent audio desync over time.
-3. In your macOS System Settings > Sound > Output, select this new **Multi-Output Device**.
-
-#### 3. Local LLM Setup
-Install [Ollama](https://ollama.com) and pull the high-speed translation model.
-```bash
-ollama run qwen2.5:3b
-```
-*(You can also use larger models like `qwen2.5:7b` by changing the configuration in `main.py`, but it will increase latency).*
-
-### 🚀 Installation & Usage
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/realtime-translator.git
-   cd realtime-translator
-   ```
-
-2. **Create a Python Virtual Environment:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install Dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *Note: If `webrtcvad` fails to compile, you may need to downgrade setuptools: `pip install "setuptools<70.0.0"` before installing.*
-
-4. **Run the App:**
-   Make sure Ollama is running in the background, then launch the translator:
-   ```bash
-   python main.py
-   ```
-
-Enjoy your real-time translation! To exit, return to the terminal running `main.py` and hit `Ctrl+C`.
-
-### ⚙️ Configuration
-All major parameters are located in the `CONFIG` dictionary at the top of `main.py`:
-- `whisper_model`: "small" (or "base" for even faster, less accurate transcription)
-- `silence_trigger_ms`: 150 (VAD pause before pushing transcription task)
-- `max_chunk_duration_s`: 3.0 (forced break for long talkers)
-- `ollama_model`: "qwen2.5:3b"
-
-### 📝 License
-MIT License
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-blue?logo=apple)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-<a id="中文"></a>
-## 🇨🇳 中文版 (Chinese)
+## ✨ Features | 功能特点
 
-一个专为 macOS 设计的极速、完全离线、实时的双语（英译中）视频字幕翻译系统。
+| Feature | 功能 |
+|---|---|
+| 🔇 Fully offline — no internet required | 完全离线 — 无需联网 |
+| 🎙️ System audio capture via BlackHole | 通过 BlackHole 捕获系统音频 |
+| ⚡ Real-time speech recognition (Whisper) | 实时语音识别 (Whisper) |
+| 🌐 Local LLM translation (Ollama) | 本地大模型翻译 (Ollama) |
+| 🖥️ Floating subtitle overlay | 悬浮字幕窗口 |
+| 📊 Menu bar agent with one-click control | 菜单栏一键启停 |
+| 🛡️ Hallucination filtering | 幻觉过滤系统 |
+| 🧠 Bilingual context window for coherence | 双语上下文窗口保证连贯性 |
 
-该工具通过虚拟音频线缆截获系统的音频播放，利用语音活动检测（VAD）识别语音端点，使用 `faster-whisper` 对英文音频进行转写，并调用本地的 Ollama 大语言模型 (`qwen2.5:3b`) 实现超低延迟翻译。最终的字幕会通过 PyQt6 渲染为一个完全不可点击、透明的悬浮窗（不会抢占任何窗口焦点）。
+---
 
-### 🌟 核心特性
-- **完全离线处理**：无需 API Key，无订阅费用，100% 保护隐私。
-- **超低延迟**：端到端音画同步延迟控制在 ~1.0 秒以内。
-- **幽灵字幕 UI**：双语 Qt 悬浮窗作为系统级 HUD 存在。支持完全的鼠标点击穿透，意味着您可以无缝点按字幕下方的浏览器或视频播放器，绝不会被字幕窗阻挡。
-- **智能切分**：激进的 VAD（150ms 停顿触发）结合 3.0 秒强制切断机制，彻底告别长难句带来的翻译积压与延迟。
+## 🏗️ Architecture | 系统架构
 
-### 🛠 环境要求
-
-#### 1. 硬件与系统
-- **平台**：macOS（在 Apple Silicon M 系列芯片如 M4 Max 上测试通过）
-- **内存**：建议至少 16GB 统一内存。
-
-#### 2. 音频捕获配置 (极其重要)
-本程序需要“听见” Mac 发出的声音。您**必须**安装类似 BlackHole 的虚拟音频驱动。
-
-1. 通过 Homebrew 安装 BlackHole：
-   ```bash
-   brew install blackhole-2ch
-   ```
-2. 配置多输出设备：
-   - 打开 macOS 的 **“音频 MIDI 设置”** (Audio MIDI Setup)。
-   - 点击左下角的 `+` -> **“创建多输出设备”**。
-   - 勾选 **MacBook Pro 扬声器** 和 **BlackHole 2ch**。
-   - ⚠️ **重要**：务必勾选 BlackHole 的 **“漂移校正” (Drift Correction)**，以防止长时间播放导致的音画不同步。
-3. 在 macOS 的系统设置 > 声音 > 输出 中，选择这个新建的 **“多输出设备”**。
-
-#### 3. 本地大模型设置
-安装 [Ollama](https://ollama.com) 并拉取高速翻译模型。
-```bash
-ollama run qwen2.5:3b
 ```
-*（您也可以在 `main.py` 中修改配置使用更大的模型如 `qwen2.5:7b`，但这会增加一些延迟）。*
+System Audio (BlackHole) → VAD (WebRTC) → Whisper ASR → Ollama LLM → Floating Subtitle
+       Thread 1                              Thread 2        Thread 3        Main Thread
+```
 
-### 🚀 安装与使用
+Three independent threads ensure **zero blocking**: audio capture never waits for ASR, and ASR never waits for translation.
 
-1. **克隆仓库:**
-   ```bash
-   git clone https://github.com/您的用户名/realtime-translator.git
-   cd realtime-translator
-   ```
+三个独立线程确保**零阻塞**：音频捕获不等待识别，识别不等待翻译。
 
-2. **创建 Python 虚拟环境:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
+---
 
-3. **安装依赖:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *注意：如果 `webrtcvad` 编译失败，可能需要先降级 setuptools：`pip install "setuptools<70.0.0"`，然后再安装。*
+## 📋 Prerequisites | 前置条件
 
-4. **运行程序:**
-   确保 Ollama 正在后台运行，然后启动翻译器：
-   ```bash
-   python main.py
-   ```
+### 1. Ollama
 
-享受您的实时翻译吧！想要退出程序，只需回到运行 `main.py` 的终端并按下 `Ctrl+C`。
+Install and run [Ollama](https://ollama.com) with a translation model:
 
-### ⚙️ 核心配置
-所有主要参数都位于 `main.py` 顶部的 `CONFIG` 字典中：
-- `whisper_model`: "small" (或换成 "base" 以获得更快的转写速度，但准确率略低)
-- `silence_trigger_ms`: 150 (VAD 触发翻译的静音停顿时间)
-- `max_chunk_duration_s`: 3.0 (如果有人不停顿讲话时的强制切断时间)
-- `ollama_model`: "qwen2.5:3b"
+安装并运行 [Ollama](https://ollama.com)，下载翻译模型：
 
-### 📝 开源协议
-MIT License
+```bash
+# Install Ollama (if not installed)
+brew install ollama
+
+# Pull the recommended model (7b for quality, 3b for speed)
+# 推荐模型（7b 质量优先，3b 速度优先）
+ollama pull qwen2.5:7b
+
+# Start Ollama server
+ollama serve
+```
+
+### 2. BlackHole (Audio Loopback)
+
+Required to capture system audio output.
+
+用于捕获系统音频输出。
+
+```bash
+brew install blackhole-2ch
+```
+
+Then configure macOS **Audio MIDI Setup**:
+1. Open **Audio MIDI Setup** (音频 MIDI 设置)
+2. Click **"+"** → **Create Multi-Output Device** (创建多输出设备)
+3. Check both **Built-in Output** and **BlackHole 2ch**
+4. Set the Multi-Output Device as your system output (设为系统输出设备)
+
+### 3. PortAudio (for PyAudio)
+
+```bash
+brew install portaudio
+```
+
+---
+
+## 🚀 Installation | 安装
+
+```bash
+# Clone the repository | 克隆仓库
+git clone https://github.com/YOUR_USERNAME/realtime-translator.git
+cd realtime-translator
+
+# Create virtual environment | 创建虚拟环境
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies | 安装依赖
+pip install -r requirements.txt
+```
+
+---
+
+## ▶️ Usage | 使用方法
+
+```bash
+# Quick start | 快速启动
+./start.sh
+
+# Or manually | 或手动启动
+source .venv/bin/activate
+python main_agent.py
+```
+
+After starting:
+1. Look for the blue **T** icon in the menu bar (菜单栏蓝色 **T** 图标)
+2. Click **▶ Start Translation** to begin (开始翻译)
+3. Play any English video — subtitles appear automatically (播放英文视频即可自动显示字幕)
+4. Click **⏹ Stop Translation** to stop (停止翻译)
+
+### Settings | 设置
+
+From the menu bar icon, you can:
+- Switch ASR model: `tiny` / `base` / `small`
+- Switch LLM model: any model available in your Ollama
+
+通过菜单栏图标可以：
+- 切换 ASR 模型：`tiny` / `base` / `small`
+- 切换 LLM 模型：Ollama 中已安装的任意模型
+
+---
+
+## ⚙️ Configuration | 配置参数
+
+Key parameters in `main_agent.py`:
+
+`main_agent.py` 中的关键参数：
+
+| Parameter | Default | Description |
+|---|---|---|
+| `whisper_model` | `small` | Whisper model size (`tiny`/`base`/`small`) |
+| `ollama_model` | `qwen2.5:7b` | Ollama translation model |
+| `silence_trigger_ms` | `150` | Silence duration before segment cut (ms) |
+| `max_chunk_duration_s` | `3.0` | Max audio segment length (s) |
+| `vad_mode` | `1` | WebRTC VAD aggressiveness (0-3) |
+
+---
+
+## 🧪 Testing | 测试
+
+```bash
+# Test audio capture | 测试音频捕获
+python test_audio.py
+
+# Test Whisper ASR | 测试语音识别
+python test_whisper.py
+
+# Test Ollama translation | 测试翻译
+python test_translate.py
+
+# Test UI rendering | 测试界面
+python test_ui.py
+```
+
+---
+
+## 📁 Project Structure | 项目结构
+
+```
+realtime-translator/
+├── main_agent.py       # Main application (核心应用)
+├── start.sh            # Quick launch script (快捷启动脚本)
+├── requirements.txt    # Python dependencies (依赖列表)
+├── test_audio.py       # Audio capture test (音频测试)
+├── test_whisper.py     # ASR test (识别测试)
+├── test_translate.py   # Translation test (翻译测试)
+├── test_ui.py          # UI test (界面测试)
+└── README.md           # This file (本文件)
+```
+
+---
+
+## 🔧 Troubleshooting | 常见问题
+
+### No audio captured | 没有捕获到音频
+- Ensure BlackHole is installed and the Multi-Output Device is set as system output
+- 确保 BlackHole 已安装且多输出设备已设为系统输出
+
+### Ollama connection error | Ollama 连接错误
+- Make sure Ollama is running: `ollama serve`
+- 确保 Ollama 正在运行：`ollama serve`
+
+### Hallucinations ("Thank you" during silence) | 幻觉（静音时出现"谢谢"）
+- The built-in filter handles most cases automatically
+- 内置过滤器会自动处理大多数情况
+
+### Translation quality | 翻译质量
+- Use `qwen2.5:7b` for best quality (requires ~5GB RAM)
+- 使用 `qwen2.5:7b` 获得最佳质量（需约 5GB 内存）
+- `qwen2.5:3b` is faster but less accurate
+- `qwen2.5:3b` 更快但准确度较低
+
+---
+
+## 💡 How It Works | 工作原理
+
+1. **Audio Capture**: BlackHole routes system audio to the app via PyAudio
+2. **VAD**: WebRTC Voice Activity Detection segments audio at natural speech pauses
+3. **ASR**: faster-whisper transcribes each segment to English text
+4. **Hallucination Filter**: Removes common Whisper artifacts (e.g., "Thank you")
+5. **Translation**: Ollama translates with bilingual context for coherence
+6. **Display**: Floating subtitle overlay shows bilingual (ZH + EN) results
+
+---
+
+## 📄 License | 许可证
+
+MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments | 致谢
+
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — Fast Whisper inference
+- [Ollama](https://ollama.com) — Local LLM inference
+- [BlackHole](https://existential.audio/blackhole/) — macOS audio loopback
+- [WebRTC VAD](https://github.com/wiseman/py-webrtcvad) — Voice Activity Detection
+- [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) — GUI framework
