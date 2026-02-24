@@ -1,8 +1,8 @@
 # 🎬 Realtime Subtitle Translator | 实时字幕翻译器
 
-A fully **offline**, **real-time** English-to-Chinese subtitle translator for macOS. Captures system audio, transcribes speech using Whisper, and translates to Chinese via a local Ollama LLM — all running locally on your Mac with zero cloud dependency.
+A fully **offline**, **real-time** multilingual-to-Chinese subtitle translator for macOS. Captures system audio, auto-detects the spoken language using Whisper, and translates to Chinese via a local Ollama LLM — all running locally on your Mac with zero cloud dependency.
 
-一款完全**离线**的 macOS **实时**英语转中文字幕翻译器。通过捕获系统音频，利用 Whisper 进行语音识别，再由本地 Ollama 大语言模型翻译成中文 —— 全程在本地运行，无需云端服务。
+一款完全**离线**的 macOS **实时**多语言转中文字幕翻译器。通过捕获系统音频，利用 Whisper 自动识别语种并进行语音识别，再由本地 Ollama 大语言模型翻译成中文 —— 全程在本地运行，无需云端服务。
 
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-blue?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
@@ -15,21 +15,23 @@ A fully **offline**, **real-time** English-to-Chinese subtitle translator for ma
 | Feature | 功能 |
 |---|---|
 | 🔇 Fully offline — no internet required | 完全离线 — 无需联网 |
+| 🌍 Multi-language auto-detection (EN/JA/KO/FR/DE...) | 多语言自动识别 (英/日/韩/法/德...) |
 | 🎙️ System audio capture via BlackHole | 通过 BlackHole 捕获系统音频 |
-| ⚡ Real-time speech recognition (Whisper) | 实时语音识别 (Whisper) |
+| ⚡ Low-latency streaming translation | 低延迟流式翻译 |
 | 🌐 Local LLM translation (Ollama) | 本地大模型翻译 (Ollama) |
 | 🖥️ Floating subtitle overlay | 悬浮字幕窗口 |
 | 📊 Menu bar agent with one-click control | 菜单栏一键启停 |
-| 🛡️ Hallucination filtering | 幻觉过滤系统 |
+| 🛡️ Multi-language hallucination filtering | 多语言幻觉过滤系统 |
 | 🧠 Bilingual context window for coherence | 双语上下文窗口保证连贯性 |
+| 🇬🇧🇯🇵🇰🇷 Language flag indicator in subtitles | 字幕语言国旗标识 |
 
 ---
 
 ## 🏗️ Architecture | 系统架构
 
 ```
-System Audio (BlackHole) → VAD (WebRTC) → Whisper ASR → Ollama LLM → Floating Subtitle
-       Thread 1                              Thread 2        Thread 3        Main Thread
+System Audio (BlackHole) → VAD (WebRTC) → Whisper ASR (auto-detect lang) → Ollama LLM (streaming) → Floating Subtitle
+       Thread 1                              Thread 2                          Thread 3                  Main Thread
 ```
 
 Three independent threads ensure **zero blocking**: audio capture never waits for ASR, and ASR never waits for translation.
@@ -138,8 +140,8 @@ Key parameters in `main_agent.py`:
 |---|---|---|
 | `whisper_model` | `small` | Whisper model size (`tiny`/`base`/`small`) |
 | `ollama_model` | `qwen2.5:7b` | Ollama translation model |
-| `silence_trigger_ms` | `150` | Silence duration before segment cut (ms) |
-| `max_chunk_duration_s` | `3.0` | Max audio segment length (s) |
+| `silence_trigger_ms` | `100` | Silence duration before segment cut (ms) |
+| `max_chunk_duration_s` | `2.0` | Max audio segment length (s) |
 | `vad_mode` | `1` | WebRTC VAD aggressiveness (0-3) |
 
 ---

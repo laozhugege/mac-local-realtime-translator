@@ -1,4 +1,5 @@
 import sys
+import json
 import os
 import multiprocessing
 import logging
@@ -39,14 +40,15 @@ CONFIG = {
     "sample_rate": 16000,
     "chunk_duration_ms": 30,
     "vad_mode": 1,
-    "silence_trigger_ms": 150, # Reverted: Optimized for video speech (not music)
-    "max_chunk_duration_s": 3.0, # Reverted: 3s gives complete clauses for speech
+    "silence_trigger_ms": 100, # Low-latency: faster silence detection
+    "max_chunk_duration_s": 2.0, # Low-latency: earlier force-cut for long speech
     "ollama_api_url": "http://127.0.0.1:11434/api/generate",
     "ollama_model": "qwen2.5:7b",
-    # ADOPTED from video-subtitle-generator/translator.py (proven high-quality)
+    # Multi-language system prompt (auto-detect source language)
     "system_prompt": (
         "You are a professional subtitle translator.\n"
-        "Translate the following text into natural, fluent Chinese (Simplified).\n"
+        "Translate the following text from any language into natural, fluent Chinese (Simplified).\n"
+        "Automatically detect the source language and provide accurate translation.\n"
         "Do NOT include any explanations, transliterations, or original text in your output.\n"
         "Just provide the pure Chinese translation. If the text is already in Chinese, just output it as is."
     ),
@@ -90,12 +92,12 @@ class SubtitleWindow(QWidget):
         self.label.setStyleSheet("""
             QLabel {
                 color: white;
-                background-color: rgba(28, 28, 30, 200);
+                background-color: rgba(28, 28, 30, 100);
                 font-family: '-apple-system', 'SF Pro Text', 'Helvetica Neue', sans-serif;
                 font-size: 24px;
                 padding: 10px;
                 border-radius: 12px;
-                border: 1px solid rgba(255, 255, 255, 20);
+                border: 1px solid rgba(255, 255, 255, 10);
             }
         """)
 
@@ -108,9 +110,18 @@ class SubtitleWindow(QWidget):
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.oldPos = self.pos()
 
-    def update_text(self, zh_text, en_text):
-        if zh_text or en_text:
-            html = f"<div align='center' style='line-height:1.2; font-weight: bold;'>{zh_text}<br><span style='font-size:16px; color:#aeaeb2; font-weight: normal;'>{en_text}</span></div>"
+    # Language code to flag emoji mapping
+    LANG_FLAGS = {
+        "en": "🇬🇧", "ja": "🇯🇵", "ko": "🇰🇷", "fr": "🇫🇷", "de": "🇩🇪",
+        "es": "🇪🇸", "pt": "🇧🇷", "ru": "🇷🇺", "it": "🇮🇹", "ar": "🇸🇦",
+        "hi": "🇮🇳", "th": "🇹🇭", "vi": "🇻🇳", "zh": "🇨🇳",
+    }
+
+    def update_text(self, zh_text, source_text, source_lang=""):
+        if zh_text or source_text:
+            flag = self.LANG_FLAGS.get(source_lang, "🌍") if source_lang else ""
+            lang_indicator = f"<span style='font-size:12px;'>{flag}</span> " if flag else ""
+            html = f"<div align='center' style='line-height:1.2; font-weight: bold;'>{zh_text}<br>{lang_indicator}<span style='font-size:16px; color:#aeaeb2; font-weight: normal;'>{source_text}</span></div>"
             self.label.setText(html)
 
     def mousePressEvent(self, event):
@@ -123,12 +134,24 @@ class SubtitleWindow(QWidget):
             self.move(self.pos() + delta)
             self.oldPos = event.globalPosition().toPoint()
 
-# Whisper hallucination detection: substring patterns (case-insensitive)
+# Whisper hallucination detection: substring patterns (case-insensitive for English)
 HALLUCINATION_PATTERNS = [
     "thank you", "thanks for watching", "please subscribe", 
     "bye bye", "bye.", "subtitles by", "don't forget to like",
     "see you in the next", "i'll be right back",
     "set to continue", "mbc",
+]
+
+# CJK hallucination patterns (checked at Whisper level for multi-language mode)
+CJK_HALLUCINATION_PATTERNS = [
+    # Chinese
+    "感谢观看", "谢谢观看", "谢谢", "别忘了点赞", "请订阅", "下次再见",
+    "我马上回来", "广告之后", "字幕由", "字幕提供",
+    # Japanese  
+    "ご視聴", "チャンネル登録", "ありがとうございました",
+    "お疲れ様", "よろしくお願い",
+    # Korean
+    "시청해", "구독", "감사합니다",
 ]
 
 # Chinese hallucination patterns (for Ollama output filtering)
@@ -139,15 +162,20 @@ ZH_HALLUCINATION_PATTERNS = [
 
 def is_whisper_hallucination(text: str, processing_time: float) -> bool:
     """Check if Whisper output is likely a hallucination."""
-    t = text.strip().lower()
-    # Single character or empty
-    if len(t) <= 1:
+    t = text.strip()
+    t_lower = t.lower()
+    # Very short text (covers single CJK chars like "你", "の", etc.)
+    if len(t) <= 2:
         return True
-    # Only punctuation
-    if all(c in '.,!?…-' for c in t):
+    # Only punctuation (including CJK punctuation)
+    if all(c in '.,!?…-。、！？…—「」『』（）' for c in t):
         return True
-    # Substring pattern match
+    # English substring pattern match (case-insensitive)
     for pattern in HALLUCINATION_PATTERNS:
+        if pattern in t_lower:
+            return True
+    # CJK substring pattern match (exact, no case folding needed)
+    for pattern in CJK_HALLUCINATION_PATTERNS:
         if pattern in t:
             return True
     # If Whisper took >5s on a single chunk, it's likely processing silence
@@ -163,11 +191,27 @@ def is_zh_hallucination(zh_text: str) -> bool:
     return False
 
 class TranscriberThread(QThread):
+    def __init__(self):
+        super().__init__()
+        # Language detection cache: detect first N segments, then reuse
+        self.detected_language: str | None = None
+        self.lang_detect_count: int = 0
+        self.LANG_STABLE_THRESHOLD: int = 3  # After 3 consistent detections, cache
+        self.segment_since_last_recheck: int = 0
+        self.RECHECK_INTERVAL: int = 10  # Re-detect language every N segments
+
+    def reset_language_cache(self):
+        """Reset language detection cache — call when starting new content."""
+        self.detected_language = None
+        self.lang_detect_count = 0
+        self.segment_since_last_recheck = 0
+        print("[Whisper] Language cache reset")
+
     def run(self):
         print(f"[Whisper] Loading model '{CONFIG['whisper_model']}'...")
         try:
             model = WhisperModel(CONFIG["whisper_model"], device="cpu", compute_type="int8")
-            print("[Whisper] Model loaded.")
+            print("[Whisper] Model loaded (multi-language auto-detect).")
         except Exception as e:
             print(f"[Whisper] Failed to load model: {e}")
             return
@@ -180,8 +224,53 @@ class TranscriberThread(QThread):
             audio_float32 = audio_data.astype(np.float32) / 32768.0 # type: ignore
             
             start_t = time.time()
-            # beam_size=5 adopted from video-subtitle-generator (higher accuracy)
-            segments, _ = model.transcribe(audio_float32, beam_size=5, language="en")
+            
+            # Language detection with caching + periodic re-check:
+            # - First N segments: auto-detect language
+            # - After stable: reuse cached language, but re-check every RECHECK_INTERVAL
+            self.segment_since_last_recheck += 1
+            needs_detection = (
+                not self.detected_language
+                or self.lang_detect_count < self.LANG_STABLE_THRESHOLD
+                or self.segment_since_last_recheck >= self.RECHECK_INTERVAL
+            )
+            
+            if not needs_detection:
+                # Language is stable and no re-check needed
+                segments, _ = model.transcribe(
+                    audio_float32,
+                    beam_size=1,
+                    best_of=1,
+                    language=self.detected_language,
+                    vad_filter=False,
+                    condition_on_previous_text=False,
+                )
+                detected_lang = self.detected_language
+            else:
+                # Auto-detect language (first few segments)
+                segments_gen, info = model.transcribe(
+                    audio_float32,
+                    beam_size=1,
+                    best_of=1,
+                    vad_filter=False,
+                    condition_on_previous_text=False,
+                )
+                segments = segments_gen
+                detected_lang = info.language
+                self.segment_since_last_recheck = 0  # Reset re-check counter
+                
+                # Update cache
+                if detected_lang == self.detected_language:
+                    self.lang_detect_count += 1
+                else:
+                    # Language changed! Reset cache to new language
+                    if self.detected_language is not None:
+                        print(f"[Whisper] Language changed: {self.detected_language} -> {detected_lang}")
+                    self.detected_language = detected_lang
+                    self.lang_detect_count = 1
+                
+                print(f"[Whisper] Detected language: {detected_lang} (count: {self.lang_detect_count}/{self.LANG_STABLE_THRESHOLD})")
+            
             text = "".join([s.text for s in segments]).strip()
             processing_time = time.time() - start_t
             
@@ -191,52 +280,41 @@ class TranscriberThread(QThread):
                     print(f"[Whisper] Filtered hallucination: '{text}' ({processing_time:.2f}s)")
                     continue
 
-                print(f"[Whisper] {text} ({processing_time:.2f}s)")
+                print(f"[Whisper] [{detected_lang}] {text} ({processing_time:.2f}s)")
                 try:
-                    translation_queue.put_nowait(text)
+                    translation_queue.put_nowait((text, detected_lang))
                 except queue.Full:
                     try:
                         _ = translation_queue.get_nowait()
-                        translation_queue.put_nowait(text)
+                        translation_queue.put_nowait((text, detected_lang))
                     except queue.Empty:
-                        translation_queue.put_nowait(text)
+                        translation_queue.put_nowait((text, detected_lang))
 
 class TranslatorThread(QThread):
-    translation_ready = pyqtSignal(str, str)
+    translation_ready = pyqtSignal(str, str, str)  # zh_text, source_text, source_lang
     
     def __init__(self):
         super().__init__()
-        # Bilingual context: list of (en, zh) tuples
+        # Bilingual context: list of (source, zh) tuples
         self.context_pairs: list[tuple[str, str]] = []
-        # Short-segment accumulator
-        self.pending_fragment = ""
 
     def run(self):
-        print("[Translator] Thread started.")
+        print("[Translator] Thread started (streaming, multi-language).")
         while True:
-            text = translation_queue.get()
-            if text is None: break # Exit signal
+            item = translation_queue.get()
+            if item is None: break # Exit signal
             
-            en_text = str(text).strip()
-            if not en_text:
+            # Unpack (text, lang) tuple from queue
+            source_text, source_lang = item  # type: ignore
+            source_text = str(source_text).strip()
+            if not source_text:
                 continue
             
-            # SHORT-SEGMENT MERGING: accumulate very short fragments
-            # e.g. "work." or "blues in A." are too short for good translation alone
-            words = en_text.split()
-            has_ending = en_text[-1] in '.?!' if en_text else False
-            
-            if len(words) <= 3 and not has_ending and not self.pending_fragment:
-                # Too short and no punctuation — hold it for next segment
-                self.pending_fragment = en_text
-                print(f"[Translator] Holding short fragment: '{en_text}'")
+            # If source is already Chinese, display directly without translation
+            if source_lang == "zh":
+                print(f"[Translator] Chinese detected, displaying directly: '{source_text}'")
+                self.translation_ready.emit(source_text, source_text, source_lang)
                 continue
-            
-            # Merge any pending fragment
-            if self.pending_fragment:
-                en_text = self.pending_fragment + " " + en_text
-                self.pending_fragment = ""
-                print(f"[Translator] Merged -> '{en_text}'")
 
             # Build BILINGUAL context: show both EN and ZH of recent segments
             context_lines = []
@@ -246,9 +324,9 @@ class TranslatorThread(QThread):
             
             if context_lines:
                 context_block = "\n".join(context_lines)
-                full_prompt = f"[Translation history for context:]\n{context_block}\n\n[Now translate this new segment:]\n{en_text}"
+                full_prompt = f"[Translation history for context:]\n{context_block}\n\n[Now translate this new segment:]\n{source_text}"
             else:
-                full_prompt = en_text
+                full_prompt = source_text
             
             system_msg = str(CONFIG["system_prompt"])
             
@@ -256,7 +334,7 @@ class TranslatorThread(QThread):
                 "model": str(CONFIG["ollama_model"]),
                 "prompt": full_prompt,
                 "system": system_msg,
-                "stream": False,
+                "stream": True,  # Low-latency: streaming output
                 "options": {
                     "temperature": 0.0,
                     "top_p": 0.1
@@ -269,18 +347,36 @@ class TranslatorThread(QThread):
                     CONFIG["ollama_api_url"], 
                     json=payload, 
                     timeout=10.0,
+                    stream=True,  # Enable HTTP streaming
                     proxies={"http": None, "https": None}
                 )
                 resp.raise_for_status()
-                zh_text = resp.json().get("response", "").strip()
+                
+                # Stream tokens and update UI incrementally
+                zh_text = ""
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        token = str(chunk.get("response", ""))
+                        if token:
+                            zh_text += token
+                            # Emit after each token for instant UI update
+                            self.translation_ready.emit(zh_text, source_text, source_lang)
+                    except json.JSONDecodeError:
+                        continue
+                
+                zh_text = str(zh_text).strip()
                 
                 # Filter garbage output + Chinese hallucinations
                 if zh_text and not zh_text.startswith("[") and not zh_text.startswith("Translate") and not is_zh_hallucination(zh_text):
                     print(f"[Ollama] {zh_text} ({time.time()-start_t:.2f}s)")
-                    self.translation_ready.emit(zh_text, en_text)
+                    # Final emit with clean text
+                    self.translation_ready.emit(zh_text, source_text, source_lang)
                     
                     # Store bilingual pair for future context
-                    self.context_pairs.append((en_text, zh_text))
+                    self.context_pairs.append((source_text, zh_text))
                     if len(self.context_pairs) > 5:
                         self.context_pairs = self.context_pairs[-5:]  # type: ignore
                 else:
@@ -514,6 +610,8 @@ class MenuBarAgent(QSystemTrayIcon):
             # Start
             self.window.label.setText("Waiting for speech... 🎙️")
             self.window.show()
+            # Reset language cache for new content
+            self.transcriber.reset_language_cache()
             new_thread = AudioCaptureThread()
             self.audio_thread = new_thread
             new_thread.error_signal.connect(self.show_error)
