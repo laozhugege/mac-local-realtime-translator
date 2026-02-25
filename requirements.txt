@@ -3,4 +3,4 @@ numpy>=2.0.0
 PyAudio>=0.2.14
 PyQt6>=6.7.0
 requests>=2.31.0
-webrtcvad>=2.0.10
+webrtcvad-wheels>=2.0.11

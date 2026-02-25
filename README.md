@@ -91,12 +91,18 @@ brew install portaudio
 git clone https://github.com/YOUR_USERNAME/realtime-translator.git
 cd realtime-translator
 
-# Create virtual environment | 创建虚拟环境
+# One-step launch (auto-creates venv & installs deps)
+# 一键启动（自动创建虚拟环境并安装依赖）
+chmod +x start.sh
+./start.sh
+```
+
+Or manually:
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies | 安装依赖
 pip install -r requirements.txt
+python main_agent.py
 ```
 
 ---
@@ -199,6 +205,12 @@ realtime-translator/
 - 使用 `qwen2.5:7b` 获得最佳质量（需约 5GB 内存）
 - `qwen2.5:3b` is faster but less accurate
 - `qwen2.5:3b` 更快但准确度较低
+
+### `ModuleNotFoundError: No module named 'pkg_resources'` (Python 3.12+)
+- This project uses `webrtcvad-wheels` which is compatible with Python 3.12+
+- If you previously installed with the old `webrtcvad`, reinstall: `pip install webrtcvad-wheels`
+- 本项目使用兼容 Python 3.12+ 的 `webrtcvad-wheels`
+- 如果之前安装过旧版 `webrtcvad`，请重新安装：`pip install webrtcvad-wheels`
 
 ---
 
