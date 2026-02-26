@@ -88,7 +88,7 @@ brew install portaudio
 
 ```bash
 # Clone the repository | 克隆仓库
-git clone https://github.com/YOUR_USERNAME/realtime-translator.git
+git clone https://github.com/laozhugege/realtime-translator.git
 cd realtime-translator
 
 # One-step launch (auto-creates venv & installs deps)
